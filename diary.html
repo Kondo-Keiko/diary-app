@@ -251,10 +251,6 @@ async function save(){
     return;
   }
   const apiKey = (localStorage.getItem(LS_KEY)||"").trim();
-  if(!apiKey){
-    showErr("先に画面上部でAnthropic APIキーを設定してください。");
-    return;
-  }
 
   // 昨日の振り返りを保存（選択されていれば）
   if(yesterdayEntryDate && yesterdayChoice){
@@ -264,18 +260,19 @@ async function save(){
     document.getElementById("yesterdayCard").style.display="none";
   }
 
-  saveBtn.disabled = true;
-  saveBtn.innerHTML = '<span class="spinner"></span> AI評価中...';
-
   let score = null, comment = "";
-  try{
-    const ai = await evaluate(apiKey, events, questions, tomorrow);
-    score = ai.score; comment = ai.comment;
-  }catch(err){
-    showErr("AI評価に失敗しました：" + err.message + "（日記は保存されません）");
-    saveBtn.disabled = false;
-    saveBtn.textContent = "保存してAI評価を受ける";
-    return;
+  if(apiKey){
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<span class="spinner"></span> AI評価中...';
+    try{
+      const ai = await evaluate(apiKey, events, questions, tomorrow);
+      score = ai.score; comment = ai.comment;
+    }catch(err){
+      showErr("AI評価に失敗しました：" + err.message + "（日記は保存されません）");
+      saveBtn.disabled = false;
+      saveBtn.textContent = "保存してAI評価を受ける";
+      return;
+    }
   }
 
   // 保存（同日があれば上書き）
@@ -287,8 +284,13 @@ async function save(){
   saveEntries(entries);
 
   // 結果表示
-  document.getElementById("scoreVal").textContent = score;
-  document.getElementById("commentVal").textContent = comment;
+  if(apiKey){
+    document.getElementById("scoreVal").textContent = score;
+    document.getElementById("commentVal").textContent = comment;
+  }else{
+    document.getElementById("scoreVal").textContent = "—";
+    document.getElementById("commentVal").textContent = "APIキーを設定するとAI評価が受けられます。";
+  }
   document.getElementById("resultCard").style.display="block";
   document.getElementById("resultCard").scrollIntoView({behavior:"smooth"});
 
