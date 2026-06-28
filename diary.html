@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>思考整理ダイアリー</title>
+<style>
+  :root{
+    --accent:#4f7cff;
+    --accent-dark:#3a5fd0;
+    --bg:#f5f7fb;
+    --card:#fff;
+    --text:#2b2f38;
+    --muted:#8a909c;
+    --line:#e7eaf0;
+    --ok:#2ecc71;
+    --ng:#e9573f;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{
+    font-family:"Segoe UI","Hiragino Kaku Gothic ProN","Meiryo",sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    line-height:1.6;
+    display:flex;
+    justify-content:center;
+    padding:0 0 40px;
+  }
+  .app{width:100%;max-width:480px;padding:16px;}
+
+  h1{font-size:20px;text-align:center;margin:14px 0 16px;}
+
+  /* APIキー欄 */
+  .apikey{
+    display:flex;gap:8px;align-items:center;
+    background:var(--card);border:1px solid var(--line);
+    border-radius:12px;padding:10px 12px;margin-bottom:14px;
+  }
+  .apikey input{
+    flex:1;border:none;outline:none;font-size:14px;background:transparent;color:var(--text);
+  }
+  .apikey button{
+    border:none;background:var(--accent);color:#fff;
+    border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer;
+  }
+  .apikey .saved{color:var(--ok);font-size:18px;}
+
+  /* タブ */
+  .tabs{display:flex;background:var(--card);border-radius:12px;padding:4px;margin-bottom:16px;border:1px solid var(--line);}
+  .tabs button{
+    flex:1;border:none;background:transparent;padding:10px;border-radius:9px;
+    font-size:15px;cursor:pointer;color:var(--muted);font-weight:600;
+  }
+  .tabs button.active{background:var(--accent);color:#fff;}
+
+  /* カード */
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:14px;}
+  .card label{display:block;font-size:14px;font-weight:700;margin-bottom:8px;}
+  .hint{font-size:12px;color:var(--muted);font-weight:400;}
+
+  textarea,input[type=text]{
+    width:100%;border:1px solid var(--line);border-radius:10px;
+    padding:10px;font-size:15px;font-family:inherit;resize:none;outline:none;color:var(--text);
+  }
+  textarea:focus,input[type=text]:focus{border-color:var(--accent);}
+  .row-input{margin-bottom:8px;}
+
+  /* 昨日の振り返り */
+  .yesterday{background:#fff8e6;border-color:#f3e2b3;}
+  .yesterday .task{font-weight:600;margin:6px 0 12px;}
+  .choice{display:flex;gap:10px;}
+  .choice button{
+    flex:1;padding:10px;border-radius:10px;border:1.5px solid var(--line);
+    background:#fff;font-size:14px;cursor:pointer;font-weight:600;color:var(--text);
+  }
+  .choice button.sel-ok{background:var(--ok);border-color:var(--ok);color:#fff;}
+  .choice button.sel-ng{background:var(--ng);border-color:var(--ng);color:#fff;}
+
+  .save-btn{
+    width:100%;padding:14px;border:none;border-radius:12px;
+    background:var(--accent);color:#fff;font-size:16px;font-weight:700;cursor:pointer;
+  }
+  .save-btn:disabled{opacity:.5;cursor:not-allowed;}
+
+  /* スコア表示 */
+  .result{text-align:center;}
+  .score{font-size:44px;font-weight:800;color:var(--accent);}
+  .score small{font-size:18px;color:var(--muted);font-weight:600;}
+  .comment{text-align:left;background:#eef2ff;border-radius:10px;padding:12px;margin-top:10px;font-size:14px;}
+
+  /* 記録一覧 */
+  .log-item{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:12px;}
+  .log-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+  .log-date{font-size:13px;color:var(--muted);}
+  .log-score{background:var(--accent);color:#fff;border-radius:999px;padding:3px 12px;font-size:14px;font-weight:700;}
+  .log-section{font-size:13px;margin:6px 0;}
+  .log-section b{color:var(--accent-dark);}
+  .log-comment{background:#eef2ff;border-radius:8px;padding:8px 10px;font-size:13px;margin-top:8px;}
+  .log-result{font-size:13px;margin-top:6px;}
+  .empty{text-align:center;color:var(--muted);padding:40px 0;}
+
+  .spinner{display:inline-block;width:16px;height:16px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .err{color:var(--ng);font-size:13px;margin-top:8px;}
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>🧠 思考整理ダイアリー</h1>
+
+  <!-- APIキー設定 -->
+  <div class="apikey">
+    <input type="password" id="apiKey" placeholder="Anthropic APIキーを入力">
+    <button id="saveKey">保存</button>
+    <span class="saved" id="keyOk" style="display:none">✓</span>
+  </div>
+
+  <!-- タブ -->
+  <div class="tabs">
+    <button id="tabToday" class="active" onclick="switchTab('today')">今日の整理</button>
+    <button id="tabLog" onclick="switchTab('log')">記録一覧</button>
+  </div>
+
+  <!-- ===== 今日の整理 ===== -->
+  <div id="viewToday">
+
+    <!-- 昨日の振り返り -->
+    <div class="card yesterday" id="yesterdayCard" style="display:none">
+      <label>昨日のやること、できた？</label>
+      <div class="task" id="yesterdayTask"></div>
+      <div class="choice">
+        <button id="btnOk" onclick="setYesterday('ok')">✅ できた</button>
+        <button id="btnNg" onclick="setYesterday('ng')">❌ できなかった</button>
+      </div>
+    </div>
+
+    <!-- 今日あったこと -->
+    <div class="card">
+      <label>今日あったこと <span class="hint">（4行まで）</span></label>
+      <textarea id="events" rows="4" placeholder="1行ずつ書いてみましょう"></textarea>
+    </div>
+
+    <!-- わからなかったこと -->
+    <div class="card">
+      <label>わからなかったこと <span class="hint">（3つまで）</span></label>
+      <input type="text" class="row-input" id="q1" placeholder="① わからなかったこと">
+      <input type="text" class="row-input" id="q2" placeholder="② わからなかったこと">
+      <input type="text" class="row-input" id="q3" placeholder="③ わからなかったこと">
+    </div>
+
+    <!-- 明日やること -->
+    <div class="card">
+      <label>明日やること <span class="hint">（1つだけ）</span></label>
+      <input type="text" id="tomorrow" placeholder="最優先の1つに絞りましょう">
+    </div>
+
+    <button class="save-btn" id="saveBtn" onclick="save()">保存してAI評価を受ける</button>
+    <div class="err" id="errMsg" style="display:none"></div>
+
+    <!-- 評価結果 -->
+    <div class="card result" id="resultCard" style="display:none">
+      <div class="score"><span id="scoreVal">-</span><small> / 10</small></div>
+      <div class="comment" id="commentVal"></div>
+    </div>
+  </div>
+
+  <!-- ===== 記録一覧 ===== -->
+  <div id="viewLog" style="display:none">
+    <div id="logList"></div>
+  </div>
+</div>
+
+<script>
+const MODEL = "claude-sonnet-4-6";
+const LS_DIARY = "diary_entries";
+const LS_KEY = "diary_apikey";
+
+/* ---------- ユーティリティ ---------- */
+function todayStr(){
+  const d = new Date();
+  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+}
+function loadEntries(){
+  try{ return JSON.parse(localStorage.getItem(LS_DIARY)) || []; }catch(e){ return []; }
+}
+function saveEntries(arr){ localStorage.setItem(LS_DIARY, JSON.stringify(arr)); }
+
+/* ---------- APIキー ---------- */
+const apiKeyInput = document.getElementById("apiKey");
+const keyOk = document.getElementById("keyOk");
+(function initKey(){
+  const k = localStorage.getItem(LS_KEY);
+  if(k){ apiKeyInput.value = k; keyOk.style.display="inline"; }
+})();
+document.getElementById("saveKey").onclick = ()=>{
+  const k = apiKeyInput.value.trim();
+  if(k){ localStorage.setItem(LS_KEY, k); keyOk.style.display="inline"; }
+  else { localStorage.removeItem(LS_KEY); keyOk.style.display="none"; }
+};
+
+/* ---------- タブ ---------- */
+function switchTab(t){
+  const isToday = t==="today";
+  document.getElementById("viewToday").style.display = isToday?"block":"none";
+  document.getElementById("viewLog").style.display = isToday?"none":"block";
+  document.getElementById("tabToday").classList.toggle("active", isToday);
+  document.getElementById("tabLog").classList.toggle("active", !isToday);
+  if(!isToday) renderLog();
+}
+
+/* ---------- 昨日の振り返り ---------- */
+let yesterdayChoice = null;       // 'ok' | 'ng' | null
+let yesterdayEntryDate = null;    // 振り返り対象の日付
+
+(function initYesterday(){
+  const entries = loadEntries();
+  // 今日より前で、まだ done が未記録の最新エントリを探す
+  const past = entries
+    .filter(e => e.date < todayStr() && e.tomorrow && (e.done === undefined || e.done === null))
+    .sort((a,b)=> a.date < b.date ? 1 : -1);
+  if(past.length){
+    const e = past[0];
+    yesterdayEntryDate = e.date;
+    document.getElementById("yesterdayCard").style.display="block";
+    document.getElementById("yesterdayTask").textContent = "「"+e.tomorrow+"」";
+  }
+})();
+
+function setYesterday(v){
+  yesterdayChoice = v;
+  document.getElementById("btnOk").className = v==="ok"?"sel-ok":"";
+  document.getElementById("btnNg").className = v==="ng"?"sel-ng":"";
+}
+
+/* ---------- 保存 + AI評価 ---------- */
+async function save(){
+  const errMsg = document.getElementById("errMsg");
+  const saveBtn = document.getElementById("saveBtn");
+  errMsg.style.display="none";
+
+  const events = document.getElementById("events").value.trim();
+  const questions = [
+    document.getElementById("q1").value.trim(),
+    document.getElementById("q2").value.trim(),
+    document.getElementById("q3").value.trim()
+  ].filter(Boolean);
+  const tomorrow = document.getElementById("tomorrow").value.trim();
+
+  if(!events && !questions.length && !tomorrow){
+    showErr("少なくとも1項目は入力してください。");
+    return;
+  }
+  const apiKey = (localStorage.getItem(LS_KEY)||"").trim();
+  if(!apiKey){
+    showErr("先に画面上部でAnthropic APIキーを設定してください。");
+    return;
+  }
+
+  // 昨日の振り返りを保存（選択されていれば）
+  if(yesterdayEntryDate && yesterdayChoice){
+    const entries = loadEntries();
+    const idx = entries.findIndex(e=>e.date===yesterdayEntryDate);
+    if(idx>=0){ entries[idx].done = (yesterdayChoice==="ok"); saveEntries(entries); }
+    document.getElementById("yesterdayCard").style.display="none";
+  }
+
+  saveBtn.disabled = true;
+  saveBtn.innerHTML = '<span class="spinner"></span> AI評価中...';
+
+  let score = null, comment = "";
+  try{
+    const ai = await evaluate(apiKey, events, questions, tomorrow);
+    score = ai.score; comment = ai.comment;
+  }catch(err){
+    showErr("AI評価に失敗しました：" + err.message + "（日記は保存されません）");
+    saveBtn.disabled = false;
+    saveBtn.textContent = "保存してAI評価を受ける";
+    return;
+  }
+
+  // 保存（同日があれば上書き）
+  const entries = loadEntries();
+  const entry = { date: todayStr(), events, questions, tomorrow, score, comment, done: null, ts: Date.now() };
+  const existing = entries.findIndex(e=>e.date===entry.date);
+  if(existing>=0){ entry.done = entries[existing].done; entries[existing] = entry; }
+  else entries.push(entry);
+  saveEntries(entries);
+
+  // 結果表示
+  document.getElementById("scoreVal").textContent = score;
+  document.getElementById("commentVal").textContent = comment;
+  document.getElementById("resultCard").style.display="block";
+  document.getElementById("resultCard").scrollIntoView({behavior:"smooth"});
+
+  saveBtn.disabled = false;
+  saveBtn.textContent = "保存してAI評価を受ける";
+}
+
+function showErr(msg){
+  const e = document.getElementById("errMsg");
+  e.textContent = msg; e.style.display="block";
+}
+
+/* ---------- Anthropic API 呼び出し ---------- */
+async function evaluate(apiKey, events, questions, tomorrow){
+  const userContent =
+`以下は思考整理の訓練用日記です。次の3つの評価軸で総合的に評価してください。
+①具体性：今日あったことが具体的に書けているか
+②言語化力：わからなかったことが言葉にできているか
+③優先順位付け：明日やることが1つに絞れているか
+
+【今日あったこと】
+${events || "(未記入)"}
+
+【わからなかったこと】
+${questions.length ? questions.map((q,i)=>`${i+1}. ${q}`).join("\n") : "(未記入)"}
+
+【明日やること】
+${tomorrow || "(未記入)"}
+
+10点満点でスコアをつけ、日本語で2〜3文のフィードバックを返してください。
+必ず次のJSON形式のみで出力してください（前後に余計な文章を付けない）：
+{"score": 数字, "comment": "日本語フィードバック"}`;
+
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method:"POST",
+    headers:{
+      "content-type":"application/json",
+      "x-api-key":apiKey,
+      "anthropic-version":"2023-06-01",
+      "anthropic-dangerous-direct-browser-access":"true"
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      max_tokens: 512,
+      messages:[{ role:"user", content:userContent }]
+    })
+  });
+
+  if(!res.ok){
+    let detail = res.status + " " + res.statusText;
+    try{ const j = await res.json(); if(j.error&&j.error.message) detail = j.error.message; }catch(e){}
+    throw new Error(detail);
+  }
+
+  const data = await res.json();
+  const text = (data.content && data.content[0] && data.content[0].text) ? data.content[0].text : "";
+  const m = text.match(/\{[\s\S]*\}/);
+  if(!m) throw new Error("AIの応答を解析できませんでした");
+  const parsed = JSON.parse(m[0]);
+  return { score: parsed.score, comment: parsed.comment || "" };
+}
+
+/* ---------- 記録一覧 ---------- */
+function renderLog(){
+  const list = document.getElementById("logList");
+  const entries = loadEntries().sort((a,b)=> a.date < b.date ? 1 : -1);
+  if(!entries.length){
+    list.innerHTML = '<div class="empty">まだ記録がありません。<br>「今日の整理」から始めましょう。</div>';
+    return;
+  }
+  list.innerHTML = entries.map(e=>{
+    const esc = s => (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"<br>");
+    const qs = (e.questions&&e.questions.length) ? e.questions.map(esc).join("<br>") : "(なし)";
+    let result = "";
+    if(e.done===true) result = '<div class="log-result">✅ やること達成</div>';
+    else if(e.done===false) result = '<div class="log-result">❌ やること未達成</div>';
+    return `
+      <div class="log-item">
+        <div class="log-head">
+          <span class="log-date">${e.date}</span>
+          <span class="log-score">${e.score!=null?e.score+" / 10":"-"}</span>
+        </div>
+        <div class="log-section"><b>今日あったこと</b><br>${esc(e.events)||"(なし)"}</div>
+        <div class="log-section"><b>わからなかったこと</b><br>${qs}</div>
+        <div class="log-section"><b>明日やること</b><br>${esc(e.tomorrow)||"(なし)"}</div>
+        ${e.comment?`<div class="log-comment">💬 ${esc(e.comment)}</div>`:""}
+        ${result}
+      </div>`;
+  }).join("");
+}
+</script>
+</body>
+</html>
