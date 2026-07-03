@@ -140,12 +140,12 @@
       <textarea id="events" rows="4" placeholder="1行ずつ書いてみましょう"></textarea>
     </div>
 
-    <!-- わからなかったこと -->
+    <!-- わからなかった点、改善あり内容 -->
     <div class="card">
-      <label>わからなかったこと <span class="hint">（3つまで）</span></label>
-      <input type="text" class="row-input" id="q1" placeholder="① わからなかったこと">
-      <input type="text" class="row-input" id="q2" placeholder="② わからなかったこと">
-      <input type="text" class="row-input" id="q3" placeholder="③ わからなかったこと">
+      <label>わからなかった点、改善あり内容 <span class="hint">（3つまで）</span></label>
+      <input type="text" class="row-input" id="q1" placeholder="① わからなかった点、改善あり内容">
+      <input type="text" class="row-input" id="q2" placeholder="② わからなかった点、改善あり内容">
+      <input type="text" class="row-input" id="q3" placeholder="③ わからなかった点、改善あり内容">
     </div>
 
     <!-- 明日やること -->
@@ -177,8 +177,10 @@ const LS_KEY = "diary_apikey";
 
 /* ---------- ユーティリティ ---------- */
 function todayStr(){
-  const d = new Date();
-  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+  // 日付の切り替えは日本時間(JST=UTC+9)の午前3時。
+  // JST時刻から3時間引いた日付を「その日」とする（=UTC+6の日付）。
+  const d = new Date(Date.now() + 6*60*60*1000);
+  return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")+"-"+String(d.getUTCDate()).padStart(2,"0");
 }
 function loadEntries(){
   try{ return JSON.parse(localStorage.getItem(LS_DIARY)) || []; }catch(e){ return []; }
@@ -308,13 +310,13 @@ async function evaluate(apiKey, events, questions, tomorrow){
   const userContent =
 `以下は思考整理の訓練用日記です。次の3つの評価軸で総合的に評価してください。
 ①具体性：今日あったことが具体的に書けているか
-②言語化力：わからなかったことが言葉にできているか
+②言語化力：わからなかった点、改善あり内容が言葉にできているか
 ③優先順位付け：明日やることが1つに絞れているか
 
 【今日あったこと】
 ${events || "(未記入)"}
 
-【わからなかったこと】
+【わからなかった点、改善あり内容】
 ${questions.length ? questions.map((q,i)=>`${i+1}. ${q}`).join("\n") : "(未記入)"}
 
 【明日やること】
@@ -374,7 +376,7 @@ function renderLog(){
           <span class="log-score">${e.score!=null?e.score+" / 10":"-"}</span>
         </div>
         <div class="log-section"><b>今日あったこと</b><br>${esc(e.events)||"(なし)"}</div>
-        <div class="log-section"><b>わからなかったこと</b><br>${qs}</div>
+        <div class="log-section"><b>わからなかった点、改善あり内容</b><br>${qs}</div>
         <div class="log-section"><b>明日やること</b><br>${esc(e.tomorrow)||"(なし)"}</div>
         ${e.comment?`<div class="log-comment">💬 ${esc(e.comment)}</div>`:""}
         ${result}
