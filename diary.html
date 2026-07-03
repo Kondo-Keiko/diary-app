@@ -166,6 +166,14 @@
 
   <!-- ===== 記録一覧 ===== -->
   <div id="viewLog" style="display:none">
+    <div class="card">
+      <label>データのバックアップ <span class="hint">キャッシュ削除で記録が消えるのを防ぎます</span></label>
+      <div class="choice">
+        <button onclick="exportCsv()">⬇ CSV書き出し</button>
+        <button onclick="document.getElementById('csvFile').click()">⬆ CSV読み込み</button>
+      </div>
+      <input type="file" id="csvFile" accept=".csv,text/csv" style="display:none">
+    </div>
     <div id="logList"></div>
   </div>
 </div>
@@ -186,6 +194,102 @@ function loadEntries(){
   try{ return JSON.parse(localStorage.getItem(LS_DIARY)) || []; }catch(e){ return []; }
 }
 function saveEntries(arr){ localStorage.setItem(LS_DIARY, JSON.stringify(arr)); }
+
+/* ---------- CSVバックアップ ---------- */
+const CSV_COLS = ["date","events","q1","q2","q3","tomorrow","score","comment","done","ts"];
+
+function csvEscape(v){
+  if(v===null||v===undefined) return "";
+  const s = String(v);
+  return /[",\r\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
+}
+function entriesToCsv(entries){
+  const rows = entries
+    .slice().sort((a,b)=> a.date < b.date ? -1 : 1)
+    .map(e=>{
+      const q = e.questions || [];
+      return [
+        e.date, e.events||"", q[0]||"", q[1]||"", q[2]||"", e.tomorrow||"",
+        e.score!=null?e.score:"", e.comment||"",
+        e.done===true?"1":(e.done===false?"0":""),
+        e.ts!=null?e.ts:""
+      ].map(csvEscape).join(",");
+    });
+  // BOM付きでExcelでも文字化けしないように
+  return "﻿" + [CSV_COLS.join(",")].concat(rows).join("\r\n");
+}
+function exportCsv(){
+  const entries = loadEntries();
+  if(!entries.length){ alert("記録がありません。"); return; }
+  const blob = new Blob([entriesToCsv(entries)], {type:"text/csv;charset=utf-8;"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "diary_backup_" + todayStr() + ".csv";
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
+// RFC4180準拠の簡易CSVパーサ（引用符内の改行・カンマ・""に対応）
+function parseCsv(text){
+  if(text.charCodeAt(0)===0xFEFF) text = text.slice(1);
+  const rows=[]; let row=[], field="", inQ=false, i=0;
+  while(i < text.length){
+    const c = text[i];
+    if(inQ){
+      if(c==='"'){
+        if(text[i+1]==='"'){ field+='"'; i+=2; continue; }
+        inQ=false; i++; continue;
+      }
+      field+=c; i++; continue;
+    }
+    if(c==='"'){ inQ=true; i++; continue; }
+    if(c===','){ row.push(field); field=""; i++; continue; }
+    if(c==='\r'){ i++; continue; }
+    if(c==='\n'){ row.push(field); rows.push(row); row=[]; field=""; i++; continue; }
+    field+=c; i++;
+  }
+  if(field!=="" || row.length){ row.push(field); rows.push(row); }
+  return rows;
+}
+function importCsv(text){
+  const rows = parseCsv(text);
+  if(!rows.length) return 0;
+  const head = rows[0].map(s=>s.trim().toLowerCase());
+  const hasHeader = head.includes("date");
+  const col = {};
+  if(hasHeader) head.forEach((h,idx)=> col[h]=idx);
+  else CSV_COLS.forEach((h,idx)=> col[h]=idx);
+  const start = hasHeader ? 1 : 0;
+  const get = (r,name)=> col[name]!=null ? (r[col[name]]||"") : "";
+
+  const entries = loadEntries();
+  let count = 0;
+  for(let i=start; i<rows.length; i++){
+    const r = rows[i];
+    if(!r.length || r.every(x=>x==="")) continue;
+    const date = get(r,"date").trim();
+    if(!date) continue;
+    const scoreRaw = get(r,"score").trim();
+    const doneRaw  = get(r,"done").trim().toLowerCase();
+    const tsRaw    = get(r,"ts").trim();
+    const entry = {
+      date,
+      events: get(r,"events"),
+      questions: [get(r,"q1"),get(r,"q2"),get(r,"q3")].map(s=>s.trim()).filter(Boolean),
+      tomorrow: get(r,"tomorrow"),
+      score: scoreRaw==="" ? null : Number(scoreRaw),
+      comment: get(r,"comment"),
+      done: doneRaw==="" ? null : (doneRaw==="1"||doneRaw==="true"),
+      ts: tsRaw==="" ? Date.now() : Number(tsRaw)
+    };
+    const idx = entries.findIndex(e=>e.date===date);
+    if(idx>=0) entries[idx] = entry; else entries.push(entry);
+    count++;
+  }
+  saveEntries(entries);
+  return count;
+}
 
 /* ---------- APIキー ---------- */
 const apiKeyInput = document.getElementById("apiKey");
@@ -360,7 +464,7 @@ function renderLog(){
   const list = document.getElementById("logList");
   const entries = loadEntries().sort((a,b)=> a.date < b.date ? 1 : -1);
   if(!entries.length){
-    list.innerHTML = '<div class="empty">まだ記録がありません。<br>「今日の整理」から始めましょう。</div>';
+    list.innerHTML = '<div class="empty">まだ記録がありません。<br>「今日の整理」から始めるか、<br>上の「CSV読み込み」からバックアップを復元できます。</div>';
     return;
   }
   list.innerHTML = entries.map(e=>{
@@ -383,6 +487,25 @@ function renderLog(){
       </div>`;
   }).join("");
 }
+
+/* ---------- CSVファイル選択時の読み込み ---------- */
+document.getElementById("csvFile").addEventListener("change", function(){
+  const f = this.files && this.files[0];
+  if(!f){ return; }
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    try{
+      const n = importCsv(String(reader.result));
+      alert(n + "件の記録を読み込みました。");
+      renderLog();
+    }catch(err){
+      alert("読み込みに失敗しました：" + err.message);
+    }
+    this.value = "";
+  };
+  reader.onerror = ()=>{ alert("ファイルの読み込みに失敗しました。"); this.value=""; };
+  reader.readAsText(f, "UTF-8");
+});
 </script>
 </body>
 </html>
