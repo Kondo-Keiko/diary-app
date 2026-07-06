@@ -58,12 +58,17 @@
   .card label{display:block;font-size:14px;font-weight:700;margin-bottom:8px;}
   .hint{font-size:12px;color:var(--muted);font-weight:400;}
 
-  textarea,input[type=text]{
+  textarea,input[type=text],input[type=date]{
     width:100%;border:1px solid var(--line);border-radius:10px;
     padding:10px;font-size:15px;font-family:inherit;resize:none;outline:none;color:var(--text);
   }
-  textarea:focus,input[type=text]:focus{border-color:var(--accent);}
+  textarea:focus,input[type=text]:focus,input[type=date]:focus{border-color:var(--accent);}
   .row-input{margin-bottom:8px;}
+
+  /* 日付選択 */
+  .datebar{display:flex;align-items:center;gap:10px;}
+  .datebar label{margin-bottom:0;white-space:nowrap;}
+  .datebar input[type=date]{flex:1;}
 
   /* 昨日の振り返り */
   .yesterday{background:#fff8e6;border-color:#f3e2b3;}
@@ -123,6 +128,12 @@
 
   <!-- ===== 今日の整理 ===== -->
   <div id="viewToday">
+
+    <!-- 日付選択 -->
+    <div class="card datebar">
+      <label for="entryDate">📅 日付</label>
+      <input type="date" id="entryDate">
+    </div>
 
     <!-- 昨日の振り返り -->
     <div class="card yesterday" id="yesterdayCard" style="display:none">
@@ -314,29 +325,84 @@ function switchTab(t){
   if(!isToday) renderLog();
 }
 
-/* ---------- 昨日の振り返り ---------- */
+/* ---------- 日付選択 ---------- */
+const dateInput = document.getElementById("entryDate");
+dateInput.max = todayStr();          // 未来日は選べない
+dateInput.value = todayStr();        // デフォルトは当日
+
+function selectedDate(){
+  const v = dateInput.value;
+  // 未入力・未来日は当日に丸める
+  if(!v || v > todayStr()) return todayStr();
+  return v;
+}
+
+// 選択日のエントリをフォームに読み込む（なければ空欄）
+function loadEntryToForm(){
+  const date = selectedDate();
+  const e = loadEntries().find(x => x.date === date);
+  const q = (e && e.questions) || [];
+  document.getElementById("events").value   = (e && e.events)   || "";
+  document.getElementById("q1").value       = q[0] || "";
+  document.getElementById("q2").value       = q[1] || "";
+  document.getElementById("q3").value       = q[2] || "";
+  document.getElementById("tomorrow").value = (e && e.tomorrow) || "";
+
+  // 既存の評価結果を表示 / なければ隠す
+  const resultCard = document.getElementById("resultCard");
+  if(e && (e.score != null || e.comment)){
+    document.getElementById("scoreVal").textContent   = e.score != null ? e.score : "—";
+    document.getElementById("commentVal").textContent = e.comment || "";
+    resultCard.style.display = "block";
+  }else{
+    resultCard.style.display = "none";
+  }
+
+  document.getElementById("saveBtn").textContent =
+    e ? "上書き保存してAI評価を受ける" : "保存してAI評価を受ける";
+
+  refreshYesterday();
+}
+
+dateInput.addEventListener("change", ()=>{
+  if(dateInput.value > todayStr()) dateInput.value = todayStr(); // 未来日ガード
+  document.getElementById("errMsg").style.display = "none";
+  loadEntryToForm();
+});
+
+/* ---------- 前回の振り返り ---------- */
 let yesterdayChoice = null;       // 'ok' | 'ng' | null
 let yesterdayEntryDate = null;    // 振り返り対象の日付
 
-(function initYesterday(){
+function refreshYesterday(){
+  yesterdayChoice = null;
+  document.getElementById("btnOk").className = "";
+  document.getElementById("btnNg").className = "";
+  const base = selectedDate();
   const entries = loadEntries();
-  // 今日より前で、まだ done が未記録の最新エントリを探す
+  // 選択日より前で、まだ done が未記録の最新エントリを探す
   const past = entries
-    .filter(e => e.date < todayStr() && e.tomorrow && (e.done === undefined || e.done === null))
+    .filter(e => e.date < base && e.tomorrow && (e.done === undefined || e.done === null))
     .sort((a,b)=> a.date < b.date ? 1 : -1);
+  const card = document.getElementById("yesterdayCard");
   if(past.length){
     const e = past[0];
     yesterdayEntryDate = e.date;
-    document.getElementById("yesterdayCard").style.display="block";
+    card.style.display = "block";
     document.getElementById("yesterdayTask").textContent = "「"+e.tomorrow+"」";
+  }else{
+    yesterdayEntryDate = null;
+    card.style.display = "none";
   }
-})();
+}
 
 function setYesterday(v){
   yesterdayChoice = v;
   document.getElementById("btnOk").className = v==="ok"?"sel-ok":"";
   document.getElementById("btnNg").className = v==="ng"?"sel-ng":"";
 }
+
+loadEntryToForm();  // 初期表示（当日分を読み込み）
 
 /* ---------- 保存 + AI評価 ---------- */
 async function save(){
@@ -383,7 +449,7 @@ async function save(){
 
   // 保存（同日があれば上書き）
   const entries = loadEntries();
-  const entry = { date: todayStr(), events, questions, tomorrow, score, comment, done: null, ts: Date.now() };
+  const entry = { date: selectedDate(), events, questions, tomorrow, score, comment, done: null, ts: Date.now() };
   const existing = entries.findIndex(e=>e.date===entry.date);
   if(existing>=0){ entry.done = entries[existing].done; entries[existing] = entry; }
   else entries.push(entry);
@@ -401,7 +467,8 @@ async function save(){
   document.getElementById("resultCard").scrollIntoView({behavior:"smooth"});
 
   saveBtn.disabled = false;
-  saveBtn.textContent = "保存してAI評価を受ける";
+  saveBtn.textContent = "上書き保存してAI評価を受ける";
+  refreshYesterday();
 }
 
 function showErr(msg){
