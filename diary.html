@@ -103,6 +103,11 @@
   .log-comment{background:#eef2ff;border-radius:8px;padding:8px 10px;font-size:13px;margin-top:8px;}
   .log-result{font-size:13px;margin-top:6px;}
   .empty{text-align:center;color:var(--muted);padding:40px 0;}
+  .btn-datechg{background:none;border:none;color:var(--accent);cursor:pointer;font-size:12px;padding:0;margin-top:10px;font-weight:600;}
+  .date-edit{display:flex;gap:8px;align-items:center;margin-top:10px;}
+  .date-edit input[type=date]{flex:1;padding:8px;font-size:14px;}
+  .date-edit button{padding:8px 12px;border-radius:8px;border:1px solid var(--line);background:#fff;cursor:pointer;font-size:13px;font-weight:600;color:var(--text);}
+  .date-edit .apply{background:var(--accent);border-color:var(--accent);color:#fff;}
 
   .spinner{display:inline-block;width:16px;height:16px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;}
   @keyframes spin{to{transform:rotate(360deg);}}
@@ -551,8 +556,48 @@ function renderLog(){
         <div class="log-section"><b>明日やること</b><br>${esc(e.tomorrow)||"(なし)"}</div>
         ${e.comment?`<div class="log-comment">💬 ${esc(e.comment)}</div>`:""}
         ${result}
+        <button class="btn-datechg" onclick="toggleDateEdit('${e.date}')">📅 日付を変更</button>
+        <div class="date-edit" id="de-${e.date}" style="display:none">
+          <input type="date" id="di-${e.date}" value="${e.date}" max="${todayStr()}">
+          <button class="apply" onclick="applyDateChange('${e.date}')">移動</button>
+          <button onclick="toggleDateEdit('${e.date}')">キャンセル</button>
+        </div>
       </div>`;
   }).join("");
+}
+
+/* ---------- 記録の日付を変更 ---------- */
+function toggleDateEdit(date){
+  const el = document.getElementById("de-"+date);
+  if(el) el.style.display = (el.style.display==="none") ? "flex" : "none";
+}
+
+function applyDateChange(oldDate){
+  const input = document.getElementById("di-"+oldDate);
+  if(!input) return;
+  const newDate = input.value;
+  if(!newDate){ alert("日付を選んでください。"); return; }
+  if(newDate > todayStr()){ alert("未来の日付には変更できません。"); return; }
+  if(newDate === oldDate){ toggleDateEdit(oldDate); return; }
+
+  let entries = loadEntries();
+  const target = entries.find(e=>e.date===oldDate);
+  if(!target) return;
+
+  // 移動先に既存記録があれば上書き確認
+  if(entries.some(e=>e.date===newDate)){
+    if(!confirm(newDate+" にはすでに記録があります。上書きして移動しますか？")) return;
+    entries = entries.filter(e=>e.date!==newDate);
+  }
+  target.date = newDate;
+  target.ts = Date.now();
+  saveEntries(entries);
+  renderLog();
+
+  // 「今日の整理」側が対象日を表示していたら追従
+  const sel = selectedDate();
+  if(sel===oldDate || sel===newDate) loadEntryToForm();
+  refreshYesterday();
 }
 
 /* ---------- CSVファイル選択時の読み込み ---------- */
